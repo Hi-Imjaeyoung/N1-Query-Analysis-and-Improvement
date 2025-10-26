@@ -1,6 +1,6 @@
 # 🚀 JPA N+1 쿼리 최적화 사례 연구 (JPA Query Optimization Case Study)
 
-이 리포지토리는 Spring Boot 애플리케이션에서 발생하는 고질적인 **JPA N+1 쿼리 문제**를 식별하고, **부하 테스트(k6)**를 통해 성능을 측정하며, **`@EntityGraph` (Fetch Join)**를 이용해 이를 해결하고 개선 성과를 정량적으로 분석하는 과정을 담은 사례 연구 프로젝트입니다.
+이 리포지토리는 Spring Boot 애플리케이션에서 발생하는 고질적인 **JPA N+1 쿼리 문제**를 식별하고, **부하 테스트(k6** 를 통해 성능을 측정하며, **`@EntityGraph` (Fetch Join)** 를 이용해 이를 해결하고 개선 성과를 정량적으로 분석하는 과정을 담은 사례 연구 프로젝트입니다.
 
 ---
 
@@ -11,14 +11,14 @@
 JPA 사용 시, 연관된 엔티티를 지연 로딩(LAZY Loading)할 때 발생하는 대표적인 성능 저하 문제입니다.
 
 1.  첫 번째 쿼리(1)로 메인 엔티티 리스트를 조회합니다. (`SELECT * FROM user;`)
-2.  이후, 조회된 리스트를 순회하며 연관 엔티티에 접근할 때마다 **추가 쿼리(N)**가 발생합니다. (`SELECT * FROM post WHERE user_id = ?`)
+2.  이후, 조회된 리스트를 순회하며 연관 엔티티에 접근할 때마다 **추가 쿼리**가 발생합니다. (`SELECT * FROM post WHERE user_id = ?`)
 
 결과적으로, 단 한 번의 요청을 처리하기 위해 **(N+1)번**의 쿼리가 데이터베이스로 전송되어 심각한 성능 병목을 유발합니다.
 
 ###  내 프로젝트에서 발견된 문제점
 
-* **API:** `GET /api/campaign/getMyCampaigns` (로그인한 유저의 모든 캠페인 정보 조회)
-* **원인:** `Campaign`을 조회한 후, `campaign.getMember().getEmail()`처럼 연관된 `Member` 엔티티에 접근하는 로직에서 N+1 문제 발생이 의심되었습니다.
+* **API:** `GET /api/marginforcam/downloadExcel` (로그인한 유저의 모든 캠페인 정보 조회)
+* **원인:** `marginforcam`을 조회한 후, `marginforcam.getCampaign()`처럼 연관된 `Campaign` 엔티티에 접근하는 로직에서 N+1 문제 발생이 의심되었습니다.
 
 ---
 
@@ -26,20 +26,55 @@ JPA 사용 시, 연관된 엔티티를 지연 로딩(LAZY Loading)할 때 발생
 
 N+1 문제가 실제로 성능에 미치는 영향을 확인하기 위해 **k6** 부하 테스트 툴을 사용했습니다.
 
-* **시나리오:** 100명의 가상 유저(VU)가 10초 동안 동시에 `getMyCampaigns` API를 요청
+* **시나리오:** 100명의 가상 유저(VU)가 10초 동안 동시에 `downloadExcel` API를 요청
 * **k6 스크립트:**
     ```javascript
-    // (여기에 k6 테스트 스크립트 붙여넣기)
     import http from 'k6/http';
-    // ...
+    import { check, sleep } from 'k6';
+    
+    const users = [
+        { vu_id: 1, token: 'TestToken : GUTokenuser01' },
+        { vu_id: 2, token: 'TestToken : GUTokenuser02' },
+        { vu_id: 3, token: 'TestToken : GUTokenuser03' },
+        { vu_id: 4, token: 'TestToken : GUTokenuser04' },
+        { vu_id: 5, token: 'TestToken : GUTokenuser05' },
+    ];
+    
     export const options = {
-      stages: [
-        { duration: '5s', target: 100 },
-        { duration: '10s', target: 100 },
-        { duration: '5s', target: 0 },
-      ],
+        stages: [
+            // 1. 5초 동안 유저를 0명에서 100명까지 서서히 늘린다. (Ramp-up)
+            //    (서버에 갑작스러운 부하를 주지 않기 위한 예열 단계)
+            { duration: '5s', target: 100 },
+            // 2. 100명의 유저를 10초 동안 유지한다. (요구사항 핵심)
+            { duration: '10s', target: 100 },
+            // 3. 5초 동안 유저를 100명에서 0명으로 서서히 줄인다. (Ramp-down)
+            { duration: '5s', target: 0 },
+        ],
+        thresholds: {
+            'http_req_failed': ['rate<0.01'],   
+            'http_req_duration': ['p(95)<10000'], 
+        },
     };
-    // ...
+    
+    export default function () {
+        // 100명의 VU가 5개의 토큰을 순환하며 사용하게 된다. (이 로직은 그대로 두면 돼!)
+        const currentUser = users[(__VU - 1) % users.length];
+        const url = `http://localhost:8080/api/marginforcam/downloadExcel`;
+    
+        const params = {
+            headers: {
+                'Authorization': `${currentUser.token}`,
+                'Content-Type': 'application/json',
+            },
+        };
+    
+        const res = http.get(url, params);
+    
+        check(res, {
+            'is status 200': (r) => r.status === 200,
+        })
+        sleep(1);
+    }
     ```
 
 ###  쿼리 로그 (N+1 발생 증거)
