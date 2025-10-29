@@ -1,5 +1,8 @@
-<br>
+# 🚀 JPA N+1 쿼리 최적화 사례 연구 (JPA Query Optimization Case Study)
 
+이 리포지토리는 Spring Boot 애플리케이션에서 발생하는 고질적인 **JPA N+1 쿼리 문제**를 식별하고, **부하 테스트(k6** 를 통해 성능을 측정하며, **`@EntityGraph` (Fetch Join)** 를 이용해 이를 해결하고 개선 성과를 정량적으로 분석하는 과정을 담은 사례 연구 프로젝트입니다.
+
+---
 ## 📖 목차 (Table of Contents)
 
 1.  [**문제 정의 (The Problem)**](#1-문제-정의-the-problem)
@@ -18,11 +21,6 @@
     * [성능 개선 비교](#성능-개선-비교)
     * [배운 점 (Takeaways)](#배운-점-takeaways)
     * [향후 과제](#향후-과제)
-
----
-# 🚀 JPA N+1 쿼리 최적화 사례 연구 (JPA Query Optimization Case Study)
-
-이 리포지토리는 Spring Boot 애플리케이션에서 발생하는 고질적인 **JPA N+1 쿼리 문제**를 식별하고, **부하 테스트(k6** 를 통해 성능을 측정하며, **`@EntityGraph` (Fetch Join)** 를 이용해 이를 해결하고 개선 성과를 정량적으로 분석하는 과정을 담은 사례 연구 프로젝트입니다.
 
 ---
 
