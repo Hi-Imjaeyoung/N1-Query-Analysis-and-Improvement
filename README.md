@@ -144,7 +144,7 @@ Hibernate: select mfc1_0.mfc_id, ... from margin_for_campaign mfc1_0 ... where m
 List<MarginForCampaign> findByCampaignMemberEmail(String email);
 ```
 
-### ### Code: After
+###  Code: After
 
 `MarginForCampaignRepository.java`
 ```java
