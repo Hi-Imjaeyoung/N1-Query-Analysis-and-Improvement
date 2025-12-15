@@ -217,32 +217,30 @@ CascadeType.Remove는 JPA의 엔티티 상태 전이 방식 중 하나로, 부�
   
 ### 쿼리 로그
 서버 로그에서 API 요청 1번에 대해 N개의 조회 및 삭제 쿼리가 발생하는 것을 확인.
-    ```sql
-    2025-11-30 17:08:50.178 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select c1_0.campaign_id,c1_0.cam_ad_type,c1_0.cam_campaign_name,c1_0.cam_open,c1_0.email from campaign c1_0 where c1_0.campaign_id=?
-    2025-11-30 17:08:50.187 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select ek1_0.campaign_id,ek1_0.id,ek1_0.exclusion_keyword,ek1_0.create_time from exclusion_keyword ek1_0 where ek1_0.campaign_id=?
-    2025-11-30 17:08:50.189 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select e1_0.campaign_id,e1_0.execution_id,e1_0.exe_cost_price,e1_0.exe_detail_category,e1_0.exe_id,e1_0.exe_per_piece,e1_0.exe_product_name,e1_0.exe_sale_price,e1_0.exe_total_price,e1_0.exe_zero_roas from execution e1_0 where e1_0.campaign_id=?
-    2025-11-30 17:08:50.193 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select kb1_0.campaign_id,kb1_0.id,kb1_0.bid,kb1_0.keyword from keyword_bid kb1_0 where kb1_0.campaign_id=?
-    2025-11-30 17:08:50.202 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select kl1_0.campaign_id,kl1_0.id,kl1_0.ad_cost,kl1_0.ad_sales,kl1_0.click_rate,kl1_0.clicks,kl1_0.cpc,kl1_0.cvr,kl1_0.date,kl1_0.impressions,kl1_0.key_exclude_flag,kl1_0.key_keyword,kl1_0.key_product_sales,kl1_0.key_search_type,kl1_0.roas,kl1_0.total_sales from keyword kl1_0 where kl1_0.campaign_id=?
-    2025-11-30 17:08:50.452 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select l1_0.campaign_id,l1_0.id,l1_0.log_content from log l1_0 where l1_0.campaign_id=?
-    2025-11-30 17:08:50.456 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select mfc1_0.campaign_id,mfc1_0.mfc_id,mfc1_0.mfc_cost_price,mfc1_0.mfc_per_piece,mfc1_0.mfc_product_name,mfc1_0.mfc_return_price,mfc1_0.mfc_sale_price,mfc1_0.mfc_total_price,mfc1_0.mfc_type,mfc1_0.mfc_zero_roas from margin_for_campaign mfc1_0 where mfc1_0.campaign_id=?
-    2025-11-30 17:08:50.463 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select m1_0.campaign_id,m1_0.id,m1_0.mar_actual_sales,m1_0.mar_ad_budget,m1_0.mar_ad_conversion_sales,m1_0.mar_ad_conversion_sales_count,m1_0.mar_ad_cost,m1_0.mar_ad_margin,m1_0.mar_clicks,m1_0.mar_date,m1_0.mar_impressions,m1_0.mar_net_profit,m1_0.mar_return_cost,m1_0.mar_return_count,m1_0.mar_sales,m1_0.mar_target_efficiency,m1_0.mar_updated from margin m1_0 where m1_0.campaign_id=?
-    2025-11-30 17:08:50.471 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - select m1_0.campaign_id,m1_0.id,m1_0.contents,m1_0.date from memo m1_0 where m1_0.campaign_id=?
-    2025-11-30 17:08:50.477 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - delete from keyword where id=?
-    2025-11-30 17:08:50.480 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - delete from keyword where id=?
-    2025-11-30 17:08:50.482 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - delete from keyword where id=?
-    2025-11-30 17:08:50.482 [http-nio-8080-exec-2] DEBUG org.hibernate.SQL - delete from keyword where id=?
-    ....
-    ```
+```diff
+! [문제 상황] API 요청 1번에 발생한 쿼리 로그
+
+- 2025-11-30 17:08:50 DEBUG select ... from campaign where id=?
+- 2025-11-30 17:08:50 DEBUG select ... from exclusion_keyword where campaign_id=?
+- 2025-11-30 17:08:50 DEBUG select ... from execution where campaign_id=?
+- 2025-11-30 17:08:50 DEBUG select ... from keyword where campaign_id=?
+... (모든 연관 테이블 Select 발생)
+
+! [심각] 수천 건의 개별 Delete 쿼리 발생
+- 2025-11-30 17:08:50 DEBUG delete from keyword where id=?
+- 2025-11-30 17:08:50 DEBUG delete from keyword where id=?
+- 2025-11-30 17:08:50 DEBUG delete from keyword where id=?
+```
+
 ### k6 부하 테스트 결과 (Before)
 
-<img width="1012" height="635" alt="Image" src="https://github.com/user-attachments/assets/344f69fb-5307-4800-ba51-0dcd25640b2f" />
+<img width="1493" height="900" alt="Image" src="https://github.com/user-attachments/assets/b725c584-f28f-4839-9f4e-6ede55544fa5" />
 
 
-| 메트릭 | 결과 |
-| :--- | :--- |
-| **요청 95% 응답 시간 (p(95))** | **`5.75s`** (5,750ms) |
-| **초당 요청 수 (TPS)** | `11.09/s` |
-| **요청 실패율** | `0%` (또는 에러 발생 시 수치) |
+| 메트릭 | 배경 시나리오 | 스파이크 |
+| :--- | -- |:--- |
+| **요청 95% 응답 시간 (p(95)** | ✅ **`395ms`** (pass) |🚨 **`8.63s`** (Time-out Fail) |
+| **요청 실패율** | `0%`  | `0%`|
 
 ---
 
