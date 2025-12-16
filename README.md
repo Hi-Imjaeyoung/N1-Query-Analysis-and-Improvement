@@ -24,7 +24,7 @@ JPA 조회 시 발생하는 고질적인 **N+1 문제(Read)**를 해결한 과�
 * **해결:** `Fetch Join`, `@EntityGraph`, `BatchSize` 적용
 * **성과:** 조회 성능 최적화 및 쿼리 수 감소
 
-<a href="https://github.com/Hi-Imjaeyoung/N1-Query-Analysis-and-Improvement/tree/feat/N1-Query-Improvement">
+<a href="https://github.com/Hi-Imjaeyoung/Grouup-Performance-Tuning/tree/feat/N1-Query-Improvement">
   <img src="https://img.shields.io/badge/View_Branch-N%2B1_Query_Fix-blue?style=for-the-badge&logo=github" alt="N+1 Branch" />
 </a>
 
@@ -36,7 +36,7 @@ JPA 조회 시 발생하는 고질적인 **N+1 문제(Read)**를 해결한 과�
 * **해결:** `Facade Pattern` 도입 및 `JPQL Bulk Delete` 적용 (Fire and Forget)
 * **성과:**응답 속도 **0.7s**로 단축 (**약 12배 성능 향상 🚀**)
 
-<a href="https://github.com/Hi-Imjaeyoung/N1-Query-Analysis-and-Improvement/tree/feat/bulk-delete">
+<a href="https://github.com/Hi-Imjaeyoung/Grouup-Performance-Tuning/tree/feat/bulk-delete">
   <img src="https://img.shields.io/badge/View_Branch-Bulk_Delete_Optimization-success?style=for-the-badge&logo=github" alt="Bulk Delete Branch" />
 </a>
 
