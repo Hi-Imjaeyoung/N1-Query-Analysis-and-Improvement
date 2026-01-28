@@ -1,63 +1,107 @@
-# 🚀 대용량 트래픽 최적화 & 성능 튜닝 프로젝트
+# 🚀 Segment Tree Caching 도입기: 대시보드 조회 성능 200% 개선
 
-> **Spring Boot & JPA 기반의 캠페인 관리 서비스에서 발생한 성능 병목(N+1, Bulk Delete)을 단계별로 해결한 리팩토링 기록입니다.**
-
-이 저장소는 대용량 데이터 처리 시 발생하는 성능 이슈를 재현하고, **문제 정의 -> 가설 수립 -> 해결 -> 검증(k6)** 과정을 통해 성능을 **12배(8.6s → 0.7s)** 개선한 과정을 담고 있습니다.
-
----
-
-## 🗂️ Branch Guide (Optimization Journey)
-
-이 프로젝트는 성능 최적화 단계에 따라 **3개의 브랜치**로 나누어져 있습니다.
-아래 버튼을 클릭하면 각 단계별 상세한 **문제 해결 과정(Trouble Shooting)**과 **코드**를 확인할 수 있습니다.
-
-### 1️⃣ Main Branch (Current)
-프로젝트의 최종 완성본이자, 모든 최적화가 적용된 상태입니다.
-* **주요 내용:** 전체 아키텍처 및 최종 소스 코드
-* **현재 상태:** `Facade Pattern` + `Bulk Delete` + `Query Optimization` 적용 완료
-
-<br>
-
-### 2️⃣ Step 1: 조회 성능 최적화 (N+1 문제 해결)
-JPA 조회 시 발생하는 고질적인 **N+1 문제(Read)**를 해결한 과정입니다.
-* **문제:** 연관 관계가 복잡한 엔티티 조회 시 불필요한 쿼리 폭발
-* **해결:** `Fetch Join`, `@EntityGraph`, `BatchSize` 적용
-* **성과:** 조회 성능 최적화 및 쿼리 수 감소
-
-<a href="https://github.com/Hi-Imjaeyoung/Grouup-Performance-Tuning/tree/feat/N1-Query-Improvement">
-  <img src="https://img.shields.io/badge/View_Branch-N%2B1_Query_Fix-blue?style=for-the-badge&logo=github" alt="N+1 Branch" />
-</a>
-
-<br>
-
-### 3️⃣ Step 2: 삭제 성능 최적화 (Bulk Delete 적용)
-`Cascade.REMOVE`로 인한 **삭제 성능 저하(Delete N+1)**와 **트랜잭션 지연**을 해결한 핵심 과정입니다.
-* **문제:** 대량 삭제 시 수천 건의 개별 Delete 쿼리 발생, **8.6s 소요 (Time-out)**
-* **해결:** `Facade Pattern` 도입 및 `JPQL Bulk Delete` 적용 (Fire and Forget)
-* **성과:**응답 속도 **0.7s**로 단축 (**약 12배 성능 향상 🚀**)
-
-<a href="https://github.com/Hi-Imjaeyoung/Grouup-Performance-Tuning/tree/feat/bulk-delete">
-  <img src="https://img.shields.io/badge/View_Branch-Bulk_Delete_Optimization-success?style=for-the-badge&logo=github" alt="Bulk Delete Branch" />
-</a>
+`getCampaignTotal` API의 최대 조회 기한이 1개월에서 6개월로 확장됨에 따라, 빈번한 기간별 재조회(Drill-down) 발생 시 DB 부하가 우려되는 상황이었습니다.
+이를 해결하기 위해 **세그먼트 트리(Segment Tree) 알고리즘을 응용한 인메모리 캐싱**을 도입하여, DB 접근을 최소화하고 응답 속도를 획기적으로 개선한 과정을 공유합니다.
 
 ---
 
-## 📊 Performance Summary (Final Result)
-
-최종적으로 **Bulk Delete** 브랜치에서 달성한 성능 개선 결과입니다.
-
-| 구분 | 개선 전 (Cascade) | 개선 후 (Bulk Delete) | 개선율 |
-| :--- | :---: | :---: | :---: |
-| **응답 속도 (p95)** | `8.63s` (Fail) | **`0.71s` (Pass)** | **⚡️ 91.8% 단축** |
-| **처리량 (TPS)** | 저조 | **안정적** | **✅ 12배 향상** |
-| **쿼리 발생 수** | N개 (수천 건) | **1개 (Bulk)** | **최소화** |
-
-> 자세한 부하 테스트 결과와 분석 내용은 **[Bulk Delete Branch]**의 README에서 확인할 수 있습니다.
+## 📖 목차 (Table of Contents)
+1. [문제 정의](#1-문제-정의)
+2. [성능 측정 환경 (Before)](#2-성능-측정-환경-before)
+3. [문제 해결 과정 (Solution)](#3-문제-해결-과정-solution)
+4. [최종 성능 검증 (Result)](#4-최종-성능-검증-result)
+5. [결론 및 한계](#5-결론-및-한계)
 
 ---
 
-## 🛠️ Tech Stack
-* **Java 17 / Spring Boot 3.x**
-* **JPA / Hibernate / QueryDSL**
-* **MySQL 8.0**
-* **k6 / Grafana / Prometheus** (Performance Test)
+## 1. 문제 정의
+
+### 1.1 배경
+사용자가 대시보드에서 '전체 기간(6개월)' 조회 후, 특정 월/일로 날짜를 좁혀가며 데이터를 상세 분석하는 패턴이 빈번할 것으로 예상되었습니다.
+
+### 1.2 문제점 (Pain Points)
+* **📉 Drill Down 성능 저하:** 이미 6개월 치 데이터를 조회했음에도 불구하고, '월간', '일간'으로 기간을 좁혀 재조회할 때마다 **매번 무거운 집계 쿼리가 DB로 전송**됨.
+* **🔥 DB 부하 및 장애 위험:** 특정 이벤트로 조회 요청이 몰릴 경우 **DB Connection Pool이 고갈**되어, 타 서비스 장애로 전파될 위험이 있음.
+
+### 1.3 목표 (Goal)
+* ✅ **Zero Query:** 재조회 및 Drill-down 시 **DB 접근 0회** 달성.
+* ✅ **Latency 개선:** 동일/부분 구간 재요청 시 **응답 속도 50% 이상 단축**.
+
+---
+
+## 2. 성능 측정 환경 (Before)
+
+현실적인 부하 테스트를 위해 실제 유저 분포를 모방하여 데이터 시나리오를 구성했습니다.
+
+### 2.1 테스트 데이터 분포 (파레토 법칙 적용)
+* **Light User (80%):** 데이터 100개 보유
+* **Heavy User (15%):** 데이터 2,000개 보유
+* **Outlier (5%):** 데이터 17,000개 보유
+
+### 2.2 부하 시나리오 (K6)
+1. **Warm Up:** DB 커넥션 풀 예열
+2. **Step 1 (Base):** 하반기(6개월) 전체 조회 (DB 부하 예상)
+3. **Step 2 (Subset):** 3분기 조회 (부분 구간)
+4. **Step 3 (Deep Dive):** 8월 조회 (상세 구간)
+5. **Step 4 (Overlap):** 6~7월 교차 구간 조회
+
+### 2.3 리팩토링 전 측정 결과
+* **Step 2 (3분기):** p(95) **1.17s**
+* **Step 3 (8월):** p(95) **1.10s**
+* **특이사항:** 모든 단계에서 DB 쿼리가 발생하여 응답 속도가 정체됨.
+
+---
+
+## 3. 문제 해결 과정 (Solution)
+
+### 3.1 세그먼트 트리 구조 설계 (Segment Tree)
+* **개념:** 구간 합(Sum)을 `O(log N)`으로 조회하기 위해 **연 -> 분기 -> 월 -> 일** 형태의 계층적 트리 구조를 설계했습니다.
+* **Key 최적화 (Bit Packing):** `ConcurrentHashMap`의 Key 성능을 극대화하기 위해, `Start(9bit) + End(9bit)`를 하나의 `Integer`로 압축하여 사용했습니다.
+
+<img width="1012" height="635" alt="Image" src="https://github.com/user-attachments/assets/94162eb8-e5e9-4d2c-a453-2f8789157d79" />
+
+*(이미지 설명: 세그먼트 트리 구조 및 Bit Packing 원리)*
+
+### 3.2 시행착오: Lazy Loading의 한계
+* **초기 접근:** 요청한 구간의 노드만 그때그때 생성하는 `Lazy Loading` 방식을 적용.
+* **문제점:** 드릴 다운 시 상위 노드는 존재하지만 하위 노드가 비어있는(Hole) 경우가 빈번하여, **재귀적으로 DB를 계속 호출(N+1 문제)**하는 현상 발생. 캐시 히트율이 14%에 그침.
+
+### 3.3 최종 전략: Bulk Fetch & Build
+* **해결책:** Cache Miss 발생 시, **해당 구간의 일별 데이터(Leaf Node)를 단 1번의 쿼리로 모두 조회(Bulk Fetch)**하는 방식으로 변경.
+* **로직:**
+    1. DB에서 Raw Data 조회.
+    2. Leaf Node 채우기.
+    3. 메모리 상에서 상위 노드(Root)까지 즉시 병합(Merge/Build).
+* **결과:** 최초 1회 로딩 비용은 발생하지만, 이후 해당 구간 내의 **모든 부분 조회는 DB 접근 없이(Zero Query) 메모리에서 즉시 반환**됨.
+
+<img width="1012" height="635" alt="Image" src="https://github.com/user-attachments/assets/f5b83b91-fd16-4932-8583-1e60aeba5f85" />
+
+*(이미지 설명: Bulk Fetch 및 Tree Build 흐름도)*
+
+---
+
+## 4. 최종 성능 검증 (Result)
+
+### 4.1 지표 비교 (Before vs After)
+
+| 시나리오 단계 | 기존 (p95) | **개선 후 (p95)** | **성능 향상** | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Step 2 (3분기 조회)** | 1.17s | **0.87s** | **🔻 25% 단축** | **DB Query 0건** (Hit 100%) |
+| **Step 3 (8월 조회)** | 1.10s | **0.62s** | **🔻 44% 단축** | Drill-down 효과 극대화 |
+| Step 1 (초기 로딩) | 2.76s | 5.12s | 🔺 증가 | 초기 트리 빌드 비용 (Trade-off) |
+
+### 4.2 리소스 모니터링 결과
+* **DB Connection:** Step 2, 3 구간에서 사용량 **0** 기록. (DB 부하 완벽 제거)
+* **Memory (GC):** 인메모리 캐시 적재로 Heap 사용량이 증가했으나, GC 모니터링 결과 Survivor 영역을 거쳐 **Old Gen으로 안정적으로 승격(Promotion)**됨을 확인. (Memory Leak 없음)
+
+---
+
+## 5. 결론 및 한계
+
+### 🏆 성과
+* 부분 구간 및 상세 조회 시 **DB 접근을 100% 제거**하여 데이터베이스 부하를 획기적으로 낮췄습니다.
+* 사용자 경험(UX) 측면에서 반복적인 조회 속도를 **2배 가까이 향상**시켰습니다.
+
+### ⚠️ Trade-off (한계점)
+* **초기 로딩 비용:** 트리를 빌드하는 연산 비용으로 인해 최초 조회(Step 1) 속도는 기존보다 소폭 느려졌습니다. (전체 사용 흐름상 이득으로 판단)
+* **메모리 관리:** 데이터 양이 늘어날 경우 **OOM(Out Of Memory)** 위험이 존재합니다. 향후 **Caffeine Cache** 등을 도입하여 LRU(Eviction) 정책을 적용할 예정입니다.
